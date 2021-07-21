@@ -21,6 +21,7 @@
 % df_dopp   = frequency resolution in doppler
 
 function [stepCount] = computeStepsFromRangeDoppler(data, fStop, fStart, Nfftr, Nfftv, nTx, sTime, nSamp)
+close all;
 
 % data      = Data of an antenna link  
 % fStop     = start of bandwidth at which data were recorder
@@ -46,8 +47,8 @@ data_matrix = (reshape(data, nSamp, []));
 
 [Doppler, mds, t] =  computeDopplerFromRange(Rng_dft, Nfftv, df_rng, df_dopp, prf, fc, Dopp_axis);
 
-%[stepCount] = detectSteps(mds, t);
-
+[stepCount] = detectSteps(mds, t);
+stepCount =0;
 
 %% The following two methods are for deomastration that average or summing delays to compute CTF and then 
  % use CTF to compute Doppler introduce noise when there is no activity. Consequently causing huge 
@@ -134,7 +135,7 @@ top = abs(Rng_dft).^2;
 Rng_dft_norm = top./sum(top,1);
 
 %plot Rangprofile
-plotting = 1;
+plotting = 0;
 if(plotting ==1)
     figure;
     t = linspace(0, size(Rng_dft,2)/prf, size(Rng_dft,2)/prf);
@@ -146,9 +147,9 @@ end
 
 
 % Restricted range plot
-range = 35;
+%range = 35;
 
-[i, j, ~]=  find(Rng_axis <= range);
+%[i, j, ~]=  find(Rng_axis <= range);
 
 if(plotting ==1)
     figure;
@@ -265,6 +266,7 @@ if(plotting ==1)
     xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
     ylabel('Mean Dopper shift, $B_f(t)$ (Hz)', 'Interpreter','latex', 'FontSize',16);
     grid on;
+    drawnow;
 end
 end
 
@@ -286,7 +288,7 @@ function [Doppler, mds_f, t] = computeDopplerFromRange_CTF_FFT (Rng_dft, Nfftv, 
 window = 64;
 step = 1;
 start = 1;
-s_forward = 2;
+s_forward = 8;
 Doppler = [];
 
 
@@ -358,7 +360,7 @@ if (mean(mds)<0)
     mds = mds*-1;
 end
 
-[pks,locs,~,~] = findpeaks(mds, t, 'threshold',0.001, 'MinPeakHeight',20, 'MinPeakDistance',0.005, 'MinPeakProminence',15);
+[pks,locs,~,~] = findpeaks(mds, t);%findpeaks(mds, t, 'threshold',0.001, 'MinPeakHeight',20, 'MinPeakDistance',0.005, 'MinPeakProminence',15);
 plotting = 1;
 if(plotting == 1)
     figure;
