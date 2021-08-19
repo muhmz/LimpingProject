@@ -47,9 +47,10 @@
 % stepCount     = Number of steps in the file
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+tic;
 Nfftr = 1024; 
 Nfftv = 1024;
 
 [stepCount] = computeStepsFromRangeDoppler(data, fStop, fStart, Nfftr, Nfftv, nTx, sTime, nSamp);
-
+toc;
 fprintf('File %s contains %d steps\n', file, stepCount);

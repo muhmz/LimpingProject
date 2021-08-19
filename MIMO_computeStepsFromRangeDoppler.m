@@ -20,7 +20,7 @@
 % df_rng    = frequency resolution in range
 % df_dopp   = frequency resolution in doppler
 
-function [stepCount, mds_f, pks_locs] = computeStepsFromRangeDoppler(data, fStop, fStart, Nfftr, Nfftv, nTx, sTime, nSamp)
+function [stepCount] = computeStepsFromRangeDoppler(data, fStop, fStart, Nfftr, Nfftv, nTx, sTime, nSamp)
 close all;
 
 % data      = Data of an antenna link  
@@ -34,8 +34,7 @@ close all;
 
 
 % Reshape time series data to a matrix
-data = data.T1R1;
-
+data = data.T1R2;
 data_matrix = (reshape(data, nSamp, []));
 
 % First compute some basic parameters 
@@ -46,9 +45,10 @@ data_matrix = (reshape(data, nSamp, []));
 
 [Rng_dft] = computeRangeProfiles(data_matrix, Nfftr, Rng_axis, prf);
 
-[Doppler, mds_f, t] =  computeDopplerFromRange(Rng_dft, Nfftv, df_rng, df_dopp, prf, fc, Dopp_axis, Rng_axis);
+[Doppler, mds, t] =  computeDopplerFromRange(Rng_dft, Nfftv, df_rng, df_dopp, prf, fc, Dopp_axis, Rng_axis);
 
-[stepCount, pks_locs] = detectSteps(mds_f, t);
+[stepCount] = detectSteps(mds, t);
+stepCount =0;
 
 %% The following two methods are for deomastration that average or summing delays to compute CTF and then 
  % use CTF to compute Doppler introduce noise when there is no activity. Consequently causing huge 
@@ -122,23 +122,20 @@ function [Rng_dft] = computeRangeProfiles(data_matrix, Nfftr, Rng_axis, prf)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % remove static objects
 
-
 [data_matrix1] = HPFilter_2(data_matrix);
-data_matrix1 = bsxfun(@minus, data_matrix1, mean(data_matrix1, 2)); 
 
+data_matrix1 = bsxfun(@minus, data_matrix1, mean(data_matrix1, 2)); 
 
 % Compute rangeProfiles 
 Rng_dft = fft(data_matrix1, Nfftr, 1);
 Rng_dft = Rng_dft(1:Nfftr/2, :);
 
-%Normalize Range for plotting
+% Normalize Range for plotting
 top = abs(Rng_dft).^2;
 Rng_dft_norm = top./sum(top,1);
 
-%Rng_dft = bsxfun(@minus, Rng_dft, mean(Rng_dft, 2)); 
-
 %plot Rangprofile
-plotting = 0;
+plotting = 1;
 if(plotting ==1)
     figure;
     t = linspace(0, size(Rng_dft,2)/prf, size(Rng_dft,2)/prf);
@@ -146,8 +143,8 @@ if(plotting ==1)
     imagesc(t, Rng_axis, Rng_dft_norm);
     xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
     ylabel('Range (m)', 'Interpreter','latex', 'FontSize',16);
-    drawnow;
 end
+
 
 % Restricted range plot
 %range = 35;
@@ -180,7 +177,7 @@ Sxx1 = abs(STFT).^2;
 
 norm_spectrogram = Sxx1./sum(Sxx1, 1);
 
-norm_spectrogram(norm_spectrogram <0.002) = 0;%eps;
+norm_spectrogram(norm_spectrogram <0.005) = 0;%eps;
 figure;
 colormap(hot)
 %t = linspace(0, size(Rng_dft,2)/prf, size(Doppler,2));
@@ -203,7 +200,7 @@ xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
 ylabel('Frequency f, (Hz)', 'Interpreter','latex', 'FontSize',16);
 end 
 %% This function computes Doppler from Range profiles.
-function [Doppler1, mds_f, t] = computeDopplerFromRange(Rng_dft, Nfftv, df_rng, df_dopp, prf, fc, Dopp_axis, Rng_axis)
+function [Doppler, mds_f, t] = computeDopplerFromRange(Rng_dft, Nfftv, df_rng, df_dopp, prf, fc, Dopp_axis, Rng_axis)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Rng_dft   = Range Profile
@@ -217,72 +214,82 @@ function [Doppler1, mds_f, t] = computeDopplerFromRange(Rng_dft, Nfftv, df_rng, 
 % Dopp_psd  = Doppler
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%x1 = max(find(Rng_axis<=0));
-%x2 = max(find(Rng_axis<=50));
-%figure;
-%rng = Rng_dft(x1:x2,:);
-%top = abs(rng).^2;
-%Rng_dft_norm = top./sum(top,1);
-%imagesc(10*log10(Rng_dft_norm));
+%Rng_dft = bsxfun(@minus, Rng_dft, mean(Rng_dft, 2)); 
 
+
+%% Range sets 
+R11_start = max(find(Rng_axis<=0.6));
+R11_end = max(find(Rng_axis<=5.8));
+
+
+RInt_start = max(find(Rng_axis<=5.85));
+RInt_end = max(find(Rng_axis<=11.66));
+
+
+R22_start = max(find(Rng_axis<=12.0));
+R22_end = max(find(Rng_axis<=20.00));
+
+
+ranges= [R11_start, R11_end;RInt_start,RInt_end; R22_start,R22_end];
+
+
+%%
+
+for i = 1:size(ranges,1)
 window = 64;
 step = 1;
 start = 1;
 s_forward = 8;
-Doppler1 = [];
-
-%Rng_dft = bsxfun(@minus, Rng_dft, mean(Rng_dft, 2)); 
-
-while window <= size(Rng_dft, 2)
+Doppler = [];
+    while window <= size(Rng_dft, 2)
+        
+        windowed = conj(Rng_dft(ranges(i,1):ranges(i,2),start:window));
+        % remove stationary objects
+        windowed = bsxfun(@minus, windowed, mean(windowed, 2));
+        
+        RngDopp_psd = abs(fftshift(fft(windowed,Nfftv,2),2)).^2/(df_dopp*df_rng);
+        Doppler(:,step) = sum(RngDopp_psd,1)./sum(sum(RngDopp_psd,1));
+        
+        step = step+1;
+        start = start+s_forward;
+        window = window+s_forward;
+        
+    end
+    window = 0;
+    % Threshold the Doppler
+    Doppler(Doppler <0.005) = 0;%eps;
+    %Plot Doppler w.r.t time
     
-    windowed = conj(Rng_dft(:,start:window));
+    t = linspace(0, size(Rng_dft,2)/prf, size(Doppler,2));
+    plotting = 1;
+    if(plotting ==1)
+        figure;
+        colormap(hot);colorbar;
+        surf(t, Dopp_axis,((Doppler)));
+        set(gca,'YDir','normal')
+        %ylim([-Nfftv/2 Nfftv/2])
+        view(2);
+        shading interp;
+        xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
+        ylabel('Doppler frequency, f (Hz)', 'Interpreter','latex', 'FontSize',16);
+        drawnow;
+    end
     
-    
-    % remove stationary objects
-    %windowed = bsxfun(@minus, windowed, mean(windowed, 1));
-    
-    RngDopp_psd = abs(fftshift(fft(windowed,Nfftv,2),2)).^2/(df_dopp*df_rng);
-    Doppler1(:,step) = sum(RngDopp_psd,1)./sum(sum(RngDopp_psd,1));
-    
-    step = step+1;
-    start = start+s_forward;
-    window = window+s_forward;
-    
+    %% Compute mean Doppler shift.
+    [mds] = computeMeanDopplerShift(Doppler, Dopp_axis);
+    mds(isnan(mds))=0;
+    mds_f =  sgolayfilt(mds, 3, 71);
+    plotting = 1;
+    if(plotting ==1)
+        figure;
+        plot(t, mds_f);
+        xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
+        ylabel('Mean Dopper shift, $B_f(t)$ (Hz)', 'Interpreter','latex', 'FontSize',16);
+        grid on;
+        drawnow;
+    end
 end
 
-% Threshold the Doppler
-Doppler1(Doppler1 <0.0095) = 0;%eps;
-%Plot Doppler w.r.t time
-
-t = linspace(0, size(Rng_dft,2)/prf, size(Doppler1,2));
-plotting = 1;
-if(plotting ==1)
-    figure;
-    colormap(hot);
-    colorbar ;
-    imagesc(t, Dopp_axis, ((Doppler1)));
-    set(gca,'YDir','normal')
-    %ylim([-Nfftv/2 Nfftv/2])
-    view(2);
-    shading interp;
-    xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
-    ylabel('Doppler frequency, f (Hz)', 'Interpreter','latex', 'FontSize',16);
-    drawnow;
-end 
-mds_f=0;
-%% Compute mean Doppler shift.
-[mds] = computeMeanDopplerShift(Doppler1, Dopp_axis);
-mds(isnan(mds))=0;
-mds_f =  sgolayfilt(mds, 3, 71);
-plotting = 0;
-if(plotting ==1)
-    figure;
-    plot(t, mds_f);
-    xlabel('Time, t (s)', 'Interpreter','latex', 'FontSize',16);
-    ylabel('Mean Dopper shift, $B_f(t)$ (Hz)', 'Interpreter','latex', 'FontSize',16);
-    grid on;
-    drawnow;
-end
 end
 
 %% Compute CTF from range and then compute 
@@ -326,7 +333,7 @@ while window <= size(tf, 2)
 end
 
 % Threshold the Doppler
-Doppler(Doppler <0.005) = 0;%eps;
+Doppler(Doppler <0.095) = 0;%eps;
 %Plot Doppler w.r.t time
 figure;
 colormap(hot)
@@ -361,7 +368,7 @@ Dopp = speed2dop(vel,lambda);
 end 
 
 %% This function detects setps from the MDS
-function [stepCount, locs] = detectSteps(mds, t) 
+function [stepCount] = detectSteps(mds, t) 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %mds    = mean Doppler Shift
@@ -375,10 +382,8 @@ if (mean(mds)<0)
     mds = mds*-1;
 end
 
-mds(mds <=40) = 0;
-
-[pks,locs,~,~] = findpeaks(mds, t, 'threshold',0.0001, 'MinPeakHeight',10, 'MinPeakDistance',0.0001, 'MinPeakProminence',10);
-plotting = 0;
+[pks,locs,~,~] = findpeaks(mds, t);%findpeaks(mds, t, 'threshold',0.001, 'MinPeakHeight',20, 'MinPeakDistance',0.005, 'MinPeakProminence',15);
+plotting = 1;
 if(plotting == 1)
     figure;
     hold on;
@@ -417,12 +422,12 @@ function [xf] = HPFilter_2(x)
 
 ns = size(x,2);
 
-signal_HPF = designfilt('highpassfir', 'StopbandFrequency',0.1, 'PassbandFrequency',4, 'StopbandAttenuation', 25, 'PassbandRipple', 1, 'SampleRate', 1000, 'DesignMethod', 'equiripple');
+signal_HPF = designfilt('highpassfir', 'StopbandFrequency',0.5, 'PassbandFrequency',15, 'StopbandAttenuation', 15, 'PassbandRipple', 1, 'SampleRate', 1000, 'DesignMethod', 'equiripple');
 
-% for i = 1:size(x,1)
-%     xf(i,:)=filtfilt(signal_HPF,x(i, 1:ns));
-% end
-xf = transpose(filtfilt(signal_HPF,transpose(x)));
+for i = 1:size(x,1)
+    xf(i,:)=filtfilt(signal_HPF,x(i, 1:ns));
+end
+
 end
 
 
